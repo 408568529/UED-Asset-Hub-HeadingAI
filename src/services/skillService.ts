@@ -1,0 +1,377 @@
+import { promises as fs } from "node:fs";
+import { createHash } from "node:crypto";
+import { resolveDataPath, storageFolders } from "@/config/storage";
+import { removeStoredAssetFoldersFromPaths } from "@/lib/storage/deleteStoredEntry";
+import { readJsonFileForMutation, readJsonFileReadonly, writeJsonFile } from "@/lib/storage/jsonStorage";
+import { operationLogService } from "@/services/operationLogService";
+import { operationalStateService } from "@/services/operationalStateService";
+import { tagService } from "@/services/tagService";
+import { uploadRecordService } from "@/services/uploadRecordService";
+import type { DeleteResult, MutationResult } from "@/types/serviceResult";
+import type { Skill, SkillInput, SkillVersion } from "@/types/skill";
+
+const SKILLS_FILE = "skills.json";
+const VERSIONS_FILE = "skill-versions.json";
+
+function createId(name: string) {
+  return `${name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-").replace(/^-|-$/g, "")}-${Date.now()}`;
+}
+
+function legacyId(skill: Partial<Skill>) {
+  return `skill-legacy-${createHash("sha256").update(JSON.stringify(skill)).digest("hex").slice(0, 16)}`;
+}
+
+function sortSkills(a: Skill, b: Skill) {
+  return +new Date(b.updatedAt) - +new Date(a.updatedAt);
+}
+
+function sortVersions(a: SkillVersion, b: SkillVersion) {
+  return +new Date(b.createdAt) - +new Date(a.createdAt);
+}
+
+function normalizeSkill(skill: Partial<Skill>): Skill {
+  const authorName = String(skill.authorName ?? skill.username ?? skill.author ?? "").trim() || "未填写作者";
+  return {
+    id: skill.id ?? legacyId(skill),
+    name: skill.name ?? "未命名 Skill",
+    description: skill.description ?? "",
+    cover: skill.cover ?? "",
+    category: skill.category ?? "Other",
+    version: skill.version ?? "v1.0.0",
+    authorName,
+    uploadedBy: skill.uploadedBy ?? "unknown",
+    usageScenarios: Array.isArray(skill.usageScenarios) ? skill.usageScenarios : [],
+    tags: Array.isArray(skill.tags) ? skill.tags : [],
+    downloadCount: Number(skill.downloadCount ?? 0),
+    createdAt: skill.createdAt ?? skill.updatedAt ?? new Date(0).toISOString(),
+    updatedAt: skill.updatedAt ?? skill.createdAt ?? new Date(0).toISOString(),
+    packagePath: skill.packagePath ?? "",
+    readme: skill.readme ?? "",
+    changeLog: skill.changeLog ?? ""
+  };
+}
+
+async function readSkills(reader: typeof readJsonFileForMutation = readJsonFileForMutation, includeOperationalCounters = false) {
+  const skills = (await reader<Partial<Skill>[]>(SKILLS_FILE, [])).map(normalizeSkill);
+  if (!includeOperationalCounters) return skills;
+  return Promise.all(skills.map(async (normalized) => {
+    const counters = await operationalStateService.downloadCounters("skills", normalized.id);
+    return { ...normalized, downloadCount: normalized.downloadCount + Number(counters.downloads ?? 0) };
+  }));
+}
+
+async function syncUsageScenarioTags(skills: Skill[]) {
+  await tagService.syncTagsByType("skill-usage", skills.flatMap((skill) => skill.usageScenarios));
+}
+
+function matchesKeyword(skill: Skill, keyword?: string) {
+  if (!keyword) return true;
+  const value = `${skill.name} ${skill.description} ${skill.category} ${skill.authorName} ${skill.uploadedBy} ${skill.version} ${skill.tags.join(" ")} ${skill.usageScenarios.join(" ")}`.toLowerCase();
+  return value.includes(keyword.toLowerCase());
+}
+
+async function captureWarning(action: () => Promise<void>) {
+  try {
+    await action();
+  } catch (error) {
+    console.error(error);
+    return "Skill 操作已完成，但附属记录写入失败。";
+  }
+  return undefined;
+}
+
+export const skillService = {
+  async getSkills(keyword?: string): Promise<Skill[]> {
+    const skills = await readSkills(readJsonFileReadonly, true);
+    return skills.filter((skill) => matchesKeyword(skill, keyword)).sort(sortSkills);
+  },
+
+  async getSkillsForKnowledge(keyword?: string): Promise<Skill[]> {
+    const skills = await readSkills(readJsonFileReadonly, true);
+    return skills.filter((skill) => matchesKeyword(skill, keyword)).sort(sortSkills);
+  },
+
+  async countSkills(): Promise<number> {
+    return (await readSkills(readJsonFileReadonly)).length;
+  },
+
+  async getSkillById(id: string): Promise<Skill | null> {
+    const skills = await readSkills(readJsonFileReadonly, true);
+    return skills.find((skill) => skill.id === id) ?? null;
+  },
+
+  async getSkillForKnowledgeById(id: string): Promise<Skill | null> {
+    const skills = await readSkills(readJsonFileReadonly, true);
+    return skills.find((skill) => skill.id === id) ?? null;
+  },
+
+  async getSkillVersions(skillId: string): Promise<SkillVersion[]> {
+    const versions = await readJsonFileReadonly<SkillVersion[]>(VERSIONS_FILE, []);
+    return Promise.all(versions.filter((version) => version.skillId === skillId).sort(sortVersions).map(async (version) => {
+      const counters = await operationalStateService.downloadCounters("skillVersions", version.id);
+      return { ...version, downloadCount: version.downloadCount + Number(counters.downloads ?? 0) };
+    }));
+  },
+
+  async getSkillVersionsForKnowledge(skillId: string): Promise<SkillVersion[]> {
+    const versions = await readJsonFileReadonly<SkillVersion[]>(VERSIONS_FILE, []);
+    return versions.filter((version) => version.skillId === skillId).sort(sortVersions);
+  },
+
+  async createSkill(input: SkillInput, packagePath: string, file: File, operator = "admin"): Promise<MutationResult<Skill>> {
+    const skills = await readSkills();
+    const versions = await readJsonFileForMutation<SkillVersion[]>(VERSIONS_FILE, []);
+    const now = new Date().toISOString();
+    const skill: Skill = {
+      id: createId(input.name),
+      ...input,
+      authorName: input.authorName.trim() || "未填写作者",
+      uploadedBy: operator,
+      usageScenarios: input.usageScenarios ?? [],
+      downloadCount: 0,
+      packagePath,
+      changeLog: input.changeLog || "上传新版本",
+      createdAt: now,
+      updatedAt: now
+    };
+    const version: SkillVersion = {
+      id: `skill-version-${Date.now()}`,
+      skillId: skill.id,
+      version: skill.version,
+      packagePath,
+      fileName: file.name,
+      fileSize: file.size,
+      readme: skill.readme,
+      changeLog: skill.changeLog,
+      operator,
+      createdAt: now,
+      downloadCount: 0
+    };
+    await writeJsonFile(SKILLS_FILE, [skill, ...skills]);
+    await writeJsonFile(VERSIONS_FILE, [version, ...versions]);
+    await syncUsageScenarioTags([skill, ...skills]);
+    const warning = await captureWarning(async () => {
+      await operationLogService.createLog({
+        type: "upload",
+        title: `上传 Skill：${skill.name}`,
+        description: `上传 Skill Center 资产「${skill.name}」${skill.version}`,
+        targetType: "asset",
+        targetId: skill.id,
+        targetName: skill.name,
+        operator,
+        diffSummary: [`上传版本 ${skill.version}`, `文件名：${file.name}`, `文件大小：${file.size} bytes`]
+      });
+      await uploadRecordService.createUpload({
+        fileName: file.name,
+        fileType: "other",
+        assetModule: "skill",
+        relatedAssetId: skill.id,
+        relatedAssetName: skill.name,
+        operator,
+        status: "success",
+        summary: `上传 Skill Center 资产 ${skill.version}`,
+        storagePath: packagePath
+      });
+    });
+    return { data: skill, warning };
+  },
+
+  async updateSkill(id: string, input: SkillInput, operator = "admin"): Promise<MutationResult<Skill> | null> {
+    const skills = await readSkills();
+    const index = skills.findIndex((skill) => skill.id === id);
+    if (index < 0) return null;
+    const previous = skills[index];
+    const skill = { ...previous, ...input, authorName: input.authorName.trim() || "未填写作者", uploadedBy: previous.uploadedBy, usageScenarios: input.usageScenarios ?? [], updatedAt: new Date().toISOString() };
+    skills[index] = skill;
+    await writeJsonFile(SKILLS_FILE, skills);
+    await syncUsageScenarioTags(skills);
+    const warning = await captureWarning(async () => {
+      await operationLogService.createLog({
+        type: "update",
+        title: `编辑 Skill：${skill.name}`,
+        description: `编辑 Skill Center 资产「${skill.name}」`,
+        targetType: "asset",
+        targetId: skill.id,
+        targetName: skill.name,
+        operator,
+        diffSummary: [
+          "Skill 元数据已更新",
+          ...(previous.authorName !== skill.authorName ? [`作者：${previous.authorName} → ${skill.authorName}`] : []),
+          ...(previous.usageScenarios.join("|") !== skill.usageScenarios.join("|") ? ["使用场景标签已更新"] : [])
+        ]
+      });
+    });
+    return { data: skill, warning };
+  },
+
+  async addVersion(skillId: string, versionName: string, packagePath: string, file: File, changeLog: string, readme: string, operator = "admin"): Promise<MutationResult<SkillVersion> | null> {
+    const skills = await readSkills();
+    const versions = await readJsonFileForMutation<SkillVersion[]>(VERSIONS_FILE, []);
+    const index = skills.findIndex((skill) => skill.id === skillId);
+    if (index < 0) return null;
+    const now = new Date().toISOString();
+    const skill = {
+      ...skills[index],
+      version: versionName,
+      packagePath,
+      readme: readme || skills[index].readme,
+      changeLog: changeLog || "上传新版本",
+      updatedAt: now
+    };
+    const version: SkillVersion = {
+      id: `skill-version-${Date.now()}`,
+      skillId,
+      version: versionName,
+      packagePath,
+      fileName: file.name,
+      fileSize: file.size,
+      readme: skill.readme,
+      changeLog: skill.changeLog,
+      operator,
+      createdAt: now,
+      downloadCount: 0
+    };
+    skills[index] = skill;
+    await writeJsonFile(SKILLS_FILE, skills);
+    await writeJsonFile(VERSIONS_FILE, [version, ...versions]);
+    const warning = await captureWarning(async () => {
+      await operationLogService.createLog({
+        type: "version",
+        title: `更新 Skill 版本：${skill.name} ${versionName}`,
+        description: `上传 Skill 新版本 ${versionName}`,
+        targetType: "version",
+        targetId: version.id,
+        targetName: skill.name,
+        operator,
+        diffSummary: [skill.changeLog]
+      });
+      await uploadRecordService.createUpload({
+        fileName: file.name,
+        fileType: "other",
+        assetModule: "skill",
+        relatedAssetId: skill.id,
+        relatedAssetName: skill.name,
+        operator,
+        status: "success",
+        summary: `上传 Skill 新版本 ${versionName}`,
+        storagePath: packagePath
+      });
+    });
+    return { data: version, warning };
+  },
+
+  async overwriteCurrentVersion(skillId: string, versionName: string, packagePath: string, file: File, changeLog: string, readme: string, operator = "admin"): Promise<MutationResult<Skill> | null> {
+    const skills = await readSkills();
+    const versions = await readJsonFileForMutation<SkillVersion[]>(VERSIONS_FILE, []);
+    const index = skills.findIndex((skill) => skill.id === skillId);
+    if (index < 0) return null;
+    const now = new Date().toISOString();
+    const currentVersion = skills[index].version;
+    const skillVersions = versions.filter((version) => version.skillId === skillId).sort(sortVersions);
+    const target = skillVersions.find((version) => version.version === currentVersion) ?? skillVersions[0];
+    const skill = {
+      ...skills[index],
+      version: versionName,
+      packagePath,
+      readme: readme || skills[index].readme,
+      changeLog: changeLog || "覆盖上传当前版本",
+      updatedAt: now
+    };
+    skills[index] = skill;
+
+    if (target) {
+      const versionIndex = versions.findIndex((version) => version.id === target.id);
+      versions[versionIndex] = {
+        ...target,
+        version: versionName,
+        packagePath,
+        fileName: file.name,
+        fileSize: file.size,
+        readme: skill.readme,
+        changeLog: skill.changeLog,
+        operator
+      };
+      await writeJsonFile(VERSIONS_FILE, versions);
+    } else {
+      const version: SkillVersion = {
+        id: `skill-version-${Date.now()}`,
+        skillId,
+        version: versionName,
+        packagePath,
+        fileName: file.name,
+        fileSize: file.size,
+        readme: skill.readme,
+        changeLog: skill.changeLog,
+        operator,
+        createdAt: now,
+        downloadCount: 0
+      };
+      await writeJsonFile(VERSIONS_FILE, [version, ...versions]);
+    }
+
+    await writeJsonFile(SKILLS_FILE, skills);
+    const warning = await captureWarning(async () => {
+      await operationLogService.createLog({
+        type: "update",
+        title: `覆盖上传 Skill：${skill.name} ${versionName}`,
+        description: `覆盖 Skill 当前版本包 ${versionName}`,
+        targetType: "asset",
+        targetId: skill.id,
+        targetName: skill.name,
+        operator,
+        diffSummary: [skill.changeLog, `文件名：${file.name}`, `文件大小：${file.size} bytes`]
+      });
+      await uploadRecordService.createUpload({
+        fileName: file.name,
+        fileType: "other",
+        assetModule: "skill",
+        relatedAssetId: skill.id,
+        relatedAssetName: skill.name,
+        operator,
+        status: "success",
+        summary: `覆盖上传 Skill 当前版本 ${versionName}`,
+        storagePath: packagePath
+      });
+    });
+    return { data: skill, warning };
+  },
+
+  async incrementDownload(skillId: string, versionId?: string) {
+    await operationalStateService.recordDownload("skills", skillId);
+    if (versionId) await operationalStateService.recordDownload("skillVersions", versionId);
+  },
+
+  async deleteSkill(id: string, operator = "admin"): Promise<DeleteResult> {
+    const skills = await readSkills();
+    const versions = await readJsonFileForMutation<SkillVersion[]>(VERSIONS_FILE, []);
+    const skill = skills.find((item) => item.id === id);
+    const skillVersions = versions.filter((version) => version.skillId === id);
+    const nextSkills = skills.filter((item) => item.id !== id);
+    if (nextSkills.length === skills.length) return { deleted: false };
+    await writeJsonFile(SKILLS_FILE, nextSkills);
+    await writeJsonFile(VERSIONS_FILE, versions.filter((version) => version.skillId !== id));
+    await syncUsageScenarioTags(nextSkills);
+    const warning = await captureWarning(async () => {
+      await removeStoredAssetFoldersFromPaths(
+        storageFolders.skill,
+        [skill?.packagePath, ...skillVersions.map((version) => version.packagePath)],
+        skill?.name
+      );
+      await operationLogService.createLog({
+        type: "delete",
+        title: `删除 Skill：${skill?.name ?? id}`,
+        description: `删除 Skill Center 资产「${skill?.name ?? id}」`,
+        targetType: "asset",
+        targetId: id,
+        targetName: skill?.name,
+        operator,
+        diffSummary: ["删除 Skill"]
+      });
+    });
+    return { deleted: true, warning };
+  },
+
+  async readPackage(packagePath: string) {
+    return fs.readFile(resolveDataPath(packagePath));
+  }
+};

@@ -1,0 +1,26 @@
+node_modules/
+.npm-cache/
+.next/
+.next-local-test/
+.cache-backups/
+out/
+dist/
+
+# The official DSH source remains an independent Git repository.
+/vendor/deepseek-harness/
+
+# Runtime business data should live outside Git.
+data/
+!data.example/
+!data.example/**
+
+.env
+.env.local
+.env.*.local
+
+*.tsbuildinfo
+.DS_Store
+
+# Windows Pipe Security Adapter build artifacts are produced only on the target host.
+/native/windows-pipe-security-adapter/bin/
+/native/windows-dpapi-credential-helper/bin/

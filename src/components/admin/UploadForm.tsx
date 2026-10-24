@@ -1,0 +1,67 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { FormToast } from "@/components/admin/FormToast";
+import { LabeledField } from "@/components/admin/LabeledField";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+
+export function UploadForm() {
+  const router = useRouter();
+  const [message, setMessage] = useState("");
+  const [toast, setToast] = useState<{ message: string; tone?: "success" | "error" } | null>(null);
+
+  async function submit(formData: FormData) {
+    const response = await fetch("/api/uploads", {
+      method: "POST",
+      body: formData
+    });
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({})) as { message?: string };
+      setMessage(result.message ?? "上传失败，请稍后重试。");
+      setToast({ message: result.message ?? "上传失败，请稍后重试。", tone: "error" });
+      return;
+    }
+
+    setToast({ message: "文件上传成功。" });
+    window.setTimeout(() => router.push("/admin/uploads"), 700);
+  }
+
+  return (
+    <form action={submit} className="workflow-form space-y-6">
+      {toast ? <FormToast message={toast.message} tone={toast.tone} /> : null}
+      <LabeledField label="选择文件">
+        <Input name="file" type="file" required />
+      </LabeledField>
+      <LabeledField label="归属模块（可选）">
+        <Select name="assetModule">
+          <option value="">未归类上传</option>
+          <option value="product">Vibe Product</option>
+          <option value="component">组件规范</option>
+          <option value="sop">标准 SOP</option>
+          <option value="skill">Skill Center</option>
+          <option value="font">Font Library</option>
+          <option value="prompt">Prompt Library</option>
+        </Select>
+      </LabeledField>
+      <LabeledField label="关联资产ID（可选）">
+        <Input name="relatedAssetId" placeholder="例如：design-review-sop" />
+      </LabeledField>
+      <LabeledField label="关联资产名称（可选）">
+        <Input name="relatedAssetName" placeholder="例如：设计走查 SOP" />
+      </LabeledField>
+      <LabeledField label="上传摘要（可选）">
+        <Textarea name="summary" placeholder="说明这次上传的内容和用途" rows={4} />
+      </LabeledField>
+      <div className="flex gap-3">
+        <Button type="submit">上传文件</Button>
+        <Button type="button" variant="outline" onClick={() => router.push("/admin/uploads")}>取消</Button>
+      </div>
+      {message ? <p className="text-sm text-red-600">{message}</p> : null}
+    </form>
+  );
+}

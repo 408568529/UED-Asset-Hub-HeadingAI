@@ -1,0 +1,37 @@
+import * as React from "react";
+import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { ControlSize } from "@/components/ui/input";
+
+const selectSizes: Record<ControlSize, string> = {
+  sm: "h-[var(--control-height-sm)] pl-3 pr-8 text-xs",
+  md: "h-[var(--control-height-md)] pl-3 pr-9 text-sm",
+  lg: "h-[var(--control-height-lg)] pl-4 pr-10 text-base"
+};
+
+export type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement> & {
+  controlSize?: ControlSize;
+};
+
+export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function Select(
+  { className, controlSize = "md", children, ...props },
+  ref
+) {
+  return (
+    <span className="relative block">
+      <select
+        ref={ref}
+        data-ui-control
+        className={cn(
+          "w-full appearance-none rounded-[var(--radius-control)] border border-input bg-[hsl(var(--surface-raised))] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] outline-none transition-[border-color,box-shadow,background-color,color,opacity] duration-[var(--motion-fast)] ease-[var(--ease-standard)] hover:border-[hsl(var(--border-strong))] focus:border-foreground focus:shadow-[0_0_0_2px_hsl(var(--foreground)/0.14)] disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-70 aria-[invalid=true]:border-destructive aria-[invalid=true]:shadow-[0_0_0_2px_hsl(var(--destructive)/0.14)]",
+          selectSizes[controlSize],
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </select>
+      <ChevronDown aria-hidden="true" size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+    </span>
+  );
+});
