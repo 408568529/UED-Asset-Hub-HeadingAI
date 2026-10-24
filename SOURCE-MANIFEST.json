@@ -539,14 +539,14 @@
     },
     {
       "path": "docs/v2.5/README.html",
-      "size": 9725,
-      "sha256": "87511602d3d91035b3fdd327a8dc188895451c053e74ed9ed5c91b7fbfe2c87e",
+      "size": 9910,
+      "sha256": "883cad09fa77bef0bb92efd0dca04d4db759bc694b0224985e5cbd68984a1417",
       "mode": "100644"
     },
     {
       "path": "docs/v2.5/README.md",
-      "size": 10954,
-      "sha256": "e93e0a7bfa4e502a83e68d97d6081b50ac4d5fba46c8e361dccfca94a6a36bfe",
+      "size": 11139,
+      "sha256": "60172c1a4d72d710867e92bbb1584830bd802150503b6a9882e550ab0303ceb3",
       "mode": "100644"
     },
     {

@@ -6,7 +6,7 @@ Windows x64 与 macOS Apple Silicon 分别提供独立 ZIP。当前为候选交�
 
 核对 ZIP 对应 SHA-256，完整解压程序文件夹。Windows 程序和新数据必须放在 C 盘之外；macOS 仅支持 Apple Silicon。保留 app、dependencies、tools、licenses 和 competition-manifest.json。
 
-双击 `01-检测运行环境.cmd`（Windows）或 `01-检测运行环境.command`（Mac）。检测系统、架构、完整性、便携工具、权限和端口，通过时显示“可以启动”。检测只读，不初始化业务目录、不读取凭据、不清理进程、不修改系统 PATH。若 Windows 缺少文件符号链接权限，按检测提示由本机管理员配置权限后重试；不会自动修改系统策略。
+正常使用直接双击 `02-轻点击我启动.cmd`（Windows）或 `02-轻点击我启动.command`（Mac），启动中心会自动检测系统、架构、完整性、便携工具、权限和端口，无需先运行 01。`01-检测运行环境` 仅作为独立排障入口，不要与 02 同时运行，避免重复全包校验。检测不初始化业务目录、不读取凭据、不清理进程、不修改系统 PATH。Windows 需要文件符号链接权限时，使用已说明的管理员启动路径；不修改用户组或系统策略。
 
 ## 二、配置
 
@@ -24,7 +24,7 @@ Windows x64 与 macOS Apple Silicon 分别提供独立 ZIP。当前为候选交�
 
 ## 三、启动
 
-默认选择本机模式，检查与配置完成后点击「启动 UED Asset Hub」，通过原 Supervisor 启动完整服务。页面显示操作进度、实际结果和可恢复错误；就绪后打开实际访问地址。首次缺少模型 Key 时进入原 DSH 模型设置页面，仍须用本实例管理员登录。再次双击复用同一启动中心和已有实例，不重复初始化、安装或重置配置。
+默认选择本机模式，检查与配置完成后点击「启动 UED Asset Hub」，通过原 Supervisor 启动完整服务。页面显示操作进度、实际结果和可恢复错误；就绪后默认打开首页，不因模型配置未完成而自动跳转登录页。首次缺少模型 Key 时，提示仍会保留；请从 Agent 设置进入模型设置，并用本实例管理员登录。再次双击复用同一启动中心和已有实例，不重复初始化、安装或重置配置。
 
 启动后自动打开 `http://127.0.0.1:3247`。发行包显式启用独立本机模式，Hub、DSH、Gateway、Proxy 入口均绑定 127.0.0.1；局域网不能访问。不需用户准备 HTTPS 证书。本机 HTTP Session Cookie 使用 HttpOnly、SameSite=Lax；只有通过本机发行校验时才允许非 Secure Cookie，并保留管理员鉴权、Host、Origin/CSRF 检查。Windows Service、局域网和公网部署仍须原 HTTPS / Secure Cookie 配置，此入口不承担服务器升级。
 
