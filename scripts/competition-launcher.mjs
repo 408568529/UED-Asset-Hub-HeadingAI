@@ -163,7 +163,7 @@ export async function runLocalDistribution(action, packageRoot, { open = true, m
     if (!cookie || (action === "Start" && runtime?.status !== "ready" && runtime?.reasonCode !== "credential_missing")) throw new Error(`本安装未在限定时间达到就绪状态：${runtime?.reasonCode || "runtime_not_ready"}。保留诊断，不强杀或重复拉起。`);
     if (!await ownedHealth(origin, state, lan)) throw new Error("本机地址与本安装身份不符，操作已拒绝。");
     if (action === "Start") {
-      const url = origin + (runtime.reasonCode === "credential_missing" ? "/agent/settings" : "/");
+      const url = origin + "/";
       await writeLaunchMode(packageRoot, {mode:selectedMode,...(lan?{lan,autoStart:true}:saved.lan?{lan:saved.lan}:{} )});
       if (open) openBrowser(url);
       return { result: "PASS", url, runtime: runtime.status, source: checked.source };

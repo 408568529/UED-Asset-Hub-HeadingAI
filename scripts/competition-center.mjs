@@ -56,7 +56,8 @@ export async function startCenter(packageRoot,{checker=checkCompetitionEnvironme
     if(!state.checked || !state.configured || !state.owned || !state.url)throw Error('请先确认本安装已运行。');
     const url=new URL(state.url);
     if(url.username || url.password || !(state.mode==='local' && url.protocol==='http:' && url.hostname==='127.0.0.1' || state.mode==='lan' && url.protocol==='https:' && url.origin===state.lan.config?.origin))throw Error('启动返回的访问地址不符合当前运行模式。');
-    browserOpener(url.href);
+    state.url=new URL('/',url).href;
+    browserOpener(state.url);
   };
   const progress = (id,status,detail) => {const row=state.checks.find(r=>r.id===id);if(row)Object.assign(row,{status,detail});};
   const check = async () => {state.checked=false;state.checks.forEach(r=>Object.assign(r,{status:'PENDING',detail:'尚未检测'}));const result=await checker(root,{onProgress:progress});const saved=await modeReader(root);state.mode=saved.mode||'local';if(saved.lan)state.lan={...state.lan,status:'CONFIGURED',mode:'lan',config:saved.lan};Object.assign(state,{source:result.source||null,checked:true,configured:result.configured,owned:result.owned,dataRoot:result.dataRoot,url:result.owned?(result.origin||`http://127.0.0.1:${result.ports[0]}/`):null,status:result.owned?'原实例已运行':result.configured?'可以启动':'检测通过，请配置数据目录与管理员'});return result;};

@@ -50,6 +50,7 @@ try{
  await call('start',{mode:'lan'});await wait();assert.equal(starts,2);assert.equal(center.state.url,'https://192.168.1.20:4483/');
  await call('configure-lan',{firewallConfirmed:true,clientsTrustConfirmed:true});await wait();assert.match(center.state.error,/停止/);
  await call('stop');await wait();assert.equal(stops,2);
+ injectedUrl='http://127.0.0.1:3247/agent/settings';await call('start',{mode:'local'});await wait();assert.equal(opened.at(-1),'http://127.0.0.1:3247/','The default workspace landing page is home even when model setup is pending');assert.equal(center.state.url,'http://127.0.0.1:3247/');await call('stop');await wait();
  const countAfterStop=opened.length;await call('open');await wait();assert.equal(opened.length,countAfterStop);assert.match(center.state.error,/运行/);
  for(const url of ['https://untrusted.test/','javascript:alert(1)','http://u:p@127.0.0.1:3247/','https://192.168.1.21:4483/']){injectedUrl=url;const count=opened.length;await call('start',{mode:'local'});await wait();assert.equal(opened.length,count);assert.match(center.state.error,/访问地址/);await call('stop');await wait();}
  const before=stops;await call('exit');assert.equal(stops,before);
