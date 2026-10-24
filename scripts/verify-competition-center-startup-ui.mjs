@@ -6,13 +6,13 @@ import ts from 'typescript';
 const source=await readFile(new URL('./competition-center-ui.tsx',import.meta.url),'utf8');
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,esModuleInterop:true,target:ts.ScriptTarget.ES2020}}).outputText;
 const ready={source:{commit:'eac0a7b9d3fa8a7321a06711b1bbb3130b6506b3',tree:'04669c707f27e3dba5a2fcc9d2a20c5e61872872'},mode:'local',lanSupported:false,busy:false,checked:true,configured:true,owned:true,url:'http://127.0.0.1:3047/',checks:[],lan:{status:'NOT_CONFIGURED',addresses:[],message:''}};
-function harness({states=[],rejectAction=false,pendingAction=false}={}){
+function harness({states=[],rejectAction=false,pendingAction=false,confirmed=false}={}){
  const values=[{...ready},'','local',3,false,false],refs=[],timers=[],redirects=[];let hook=0,ref=0,root,actions=0,accept;
  const React={createElement:(type,props,...children)=>({type,props:props||{},children}),useState(initial){const i=hook++;if(!(i in values))values[i]=initial;return[values[i],value=>{values[i]=typeof value==='function'?value(values[i]):value;}];},useRef(initial){const i=ref++;return refs[i]||(refs[i]={current:initial});},useEffect(){}};
  const form={setFieldsValue(){},setFieldValue(){}};
- const antd=new Proxy({Form:Object.assign('Form',{useForm:()=>[form],useWatch:()=>false}),Typography:{Text:'Text',Title:'Title',Paragraph:'Paragraph'}},{get:(object,key)=>object[key]||key});
+ const antd=new Proxy({Form:Object.assign('Form',{useForm:()=>[form],useWatch:()=>confirmed}),Typography:{Text:'Text',Title:'Title',Paragraph:'Paragraph'}},{get:(object,key)=>object[key]||key});
  // Form has static hooks in Ant Design; a callable stub keeps those properties.
- antd.Form=Object.assign(()=>null,{useForm:()=>[form],useWatch:()=>false,Item:'Form.Item'});
+ antd.Form=Object.assign(()=>null,{useForm:()=>[form],useWatch:()=>confirmed,Item:'Form.Item'});
  vm.runInNewContext(compiled,{exports:{},require:name=>name==='react'?React:name==='react-dom/client'?{createRoot:()=>({render:element=>{root=element;}})}:name==='antd'?antd:name.includes('KnowledgeThemeProvider')?{KnowledgeThemeProvider:'Theme'}:{},location:{origin:'http://127.0.0.1:52602',hash:''},history:{replaceState(){}},sessionStorage:{getItem:()=> 'synthetic-capability',setItem(){},removeItem(){}},document:{querySelector:()=>null,getElementById:()=>({})},window:{location:{assign:url=>redirects.push(url)}},URL,Date,Promise,setInterval(){},clearInterval(){},setTimeout:resolve=>timers.push(resolve),fetch:async(_route,options)=>{
   if(options.method==='POST'){
    actions++;if(pendingAction)await new Promise(resolve=>{accept=resolve;});
@@ -25,7 +25,7 @@ function harness({states=[],rejectAction=false,pendingAction=false}={}){
  const Center=find(root,element=>typeof element.type==='function'&&element.type.name==='Center').type;
  function render(){hook=0;ref=0;return Center();}
  const button=()=>find(render(),element=>element.type==='Button'&&element.children.some(x=>typeof x==='string'&&(x==='启动 UED Asset Hub'||x==='正在启动，成功后自动跳转')));
- return{values,redirects,timers,button,get actions(){return actions;},accept:()=>accept(),tick:()=>timers.shift()()};
+ return{values,redirects,timers,button,setupButton:()=>find(render(),element=>element.type==='Button'&&element.children.some(x=>x==='确认新建并设置管理员'||x==='正在初始化，请等待')),get actions(){return actions;},accept:()=>accept(),tick:()=>timers.shift()()};
 }
 const flush=async()=>{for(let n=0;n<20;n++)await Promise.resolve();};
 {
@@ -45,3 +45,11 @@ for(const state of [{...ready,error:'Synthetic startup failed'},{...ready,owned:
  const h=harness({states:[ready]});h.button().props.onClick();await flush();assert.deepEqual(h.redirects,[ready.url],'Fast successful startup also redirects');
 }
 console.log('PASS: immediate loading, duplicate-click guard, stale URL during delayed startup, failure stays in center, fast success, and redirect URL boundary. No services or business data used.');
+
+{
+ const h=harness({confirmed:true});h.values[0]={...ready,configured:false,owned:false,checked:true,busy:false};h.values[3]=1;
+ assert.equal(h.setupButton().props.disabled,false);
+ h.values[0]={...h.values[0],busy:true,status:'正在准备全新外置数据及管理员；不安装依赖'};assert.equal(h.setupButton().props.loading,true);assert.equal(h.setupButton().props.disabled,true);assert(h.setupButton().children.includes('正在初始化，请等待'));
+ h.values[0]={...h.values[0],busy:false,error:'该目录已存在。不会覆盖。'};assert.equal(h.setupButton().props.disabled,false,'Rejected input keeps corrected initialization retry available');assert.equal(h.setupButton().props.loading,false);
+}
+console.log('PASS: initialization has visible loading and corrected input can retry after a validation rejection.');

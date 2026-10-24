@@ -443,8 +443,8 @@
     },
     {
       "path": "delivery/competition/center/center.js",
-      "size": 1039030,
-      "sha256": "2b7439873e9e2fcd060866edd08aa695ed9d365938c992955d6c64ecc8bde068",
+      "size": 1039312,
+      "sha256": "dc9a3b3a6c63e001f5dda25c5c6de534a84c5940b0819000e7ce4a12c98daa82",
       "mode": "100644"
     },
     {
@@ -456,7 +456,7 @@
     {
       "path": "delivery/competition/center/manifest.json",
       "size": 1455,
-      "sha256": "4a937880adcc1a09ee4bb0efab3770dfbfcf116e519c0d809a5e2bce41dedf4b",
+      "sha256": "03cc8d7c282e7334a2644c43e35f2efe45f579ed012866af5dde3eb93e7848d8",
       "mode": "100644"
     },
     {
@@ -749,8 +749,8 @@
     },
     {
       "path": "scripts/competition-center-ui.tsx",
-      "size": 16906,
-      "sha256": "a3476bf5a4e6f2467846eadee6286b0eb87e036079954bf3692cb4f042cb6a6a",
+      "size": 17134,
+      "sha256": "2724864cb3fcd475d42a4ea7bfe33721ff2c5488004ea66ab2bd0e88f1f2a533",
       "mode": "100644"
     },
     {
@@ -761,8 +761,8 @@
     },
     {
       "path": "scripts/competition-center.mjs",
-      "size": 15392,
-      "sha256": "08e3fd35541b5e81dfa3690cdda7649b7df402e2d12f0c259b5747163983df02",
+      "size": 15598,
+      "sha256": "7c8f1957038281d6c929af36a06e18eb6cbfe47645896f392f008d118f1325c7",
       "mode": "100644"
     },
     {
@@ -809,8 +809,8 @@
     },
     {
       "path": "scripts/competition-launcher.mjs",
-      "size": 18358,
-      "sha256": "f4f5f8571e172a136ac8ce0ece4d777b5fab70322eb4f1ecd19d2c8e0782fe98",
+      "size": 18548,
+      "sha256": "7be8f93911aec473135b9d682b706894730140dbe70c4686b2f5f61199e2fa08",
       "mode": "100644"
     },
     {
@@ -1373,14 +1373,14 @@
     },
     {
       "path": "scripts/verify-competition-center-startup-ui.mjs",
-      "size": 4779,
-      "sha256": "9aa3574272d4e7fa5ca573cf7c93e2ff059acac51dcd3339188b9161e271eabd",
+      "size": 5802,
+      "sha256": "d43081bc71496fba1d05755996eae17e5927777b5564bf860cf9e9f822a952bf",
       "mode": "100644"
     },
     {
       "path": "scripts/verify-competition-center.mjs",
-      "size": 5797,
-      "sha256": "d5f5e25952d2573adc89d99d730cea76242da8b5cf36cc1a42f013e9664ec909",
+      "size": 7397,
+      "sha256": "34352df99634d1ba0e65e96f237cf5a24177a4a8df06eca7ec76a030e1977477",
       "mode": "100644"
     },
     {

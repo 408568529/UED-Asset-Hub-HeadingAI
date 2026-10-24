@@ -38,12 +38,16 @@ async function privateConfiguration(packageRoot, dataRoot, initialize = false, p
   else { const detail = await lstat(dataRoot); if (!detail.isDirectory() || detail.isSymbolicLink() || detail.uid !== process.getuid() || (detail.mode & 0o077)) throw new Error("外置数据根的账户权限不合规。"); }
 }
 
-export async function initializeLocalAdministrator(packageRoot, input) {
+export async function validateNewAdministratorInput(packageRoot, input) {
   if (typeof input.dataRoot !== "string" || !path.isAbsolute(input.dataRoot)) throw new Error("请选择外部数据根的绝对路径。");
   if (typeof input.password !== "string" || input.password.length < 12 || typeof input.username !== "string" || !input.username.trim()) throw new Error("请设置管理员账号和至少12位的新密码。");
-  try { await lstat(input.dataRoot); throw new Error("该目录已存在。请先识别并沿用原安装，不会初始化或覆盖。"); } catch (error) { if (error.code !== "ENOENT") throw error; }
+  try { await lstat(input.dataRoot); throw new Error("该目录已存在。新建实例请填写尚不存在的子目录；已有安装请用“识别并沿用原安装”。不会覆盖。"); } catch (error) { if (error.code !== "ENOENT") throw error; }
   const security = await import(pathToFileURL(path.join(packageRoot, "app/scripts/host-security-config.mjs")).href);
   security.resolveHostSecurityConfig({ NODE_ENV: "production", PUBLIC_ORIGIN: "https://initialization.invalid", ADMIN_SESSION_SECURE: "true", ADMIN_USERNAME: input.username, ADMIN_PASSWORD: input.password, ADMIN_SESSION_SECRET: randomBytes(32).toString("base64url") });
+}
+
+export async function initializeLocalAdministrator(packageRoot, input) {
+  await validateNewAdministratorInput(packageRoot, input);
   packageRoot = (await checkCompetitionEnvironment(packageRoot)).root;
   await prepareCompetitionPackage(packageRoot);
   const result = await initializeCompetitionData({ packageRoot, dependencyRoot: path.join(packageRoot, "dependencies"), dataRoot: input.dataRoot, confirmed: true });

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkCompetitionEnvironment, readJson, toolPaths } from './competition-check.mjs';
 import { assertNoLinkedAncestors } from './competition-first-run.mjs';
-import { initializeLocalAdministrator, attachCompetitionInstallation, runLocalDistribution, openBrowser } from './competition-launcher.mjs';
+import { initializeLocalAdministrator, validateNewAdministratorInput, attachCompetitionInstallation, runLocalDistribution, openBrowser } from './competition-launcher.mjs';
 const exec = promisify(execFile), sleep = ms => new Promise(r => setTimeout(r, ms));
 const live = pid => { if (!Number.isInteger(pid) || pid < 1) return false; try { process.kill(pid, 0); return true; } catch(e) { if(e.code === 'ESRCH') return false; throw e; } };
 const equal = (a,b) => typeof a === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a),Buffer.from(b));
@@ -54,7 +54,7 @@ export async function startCenter(packageRoot,{checker=checkCompetitionEnvironme
   const state = {mode:'local',lanSupported,source:null,lan:{status:'NOT_CONFIGURED',addresses:[],message:'选择局域网共享后检测地址、证书和防火墙。'},busy:false,checked:false,configured:false,owned:false,dataRoot:null,url:null,status:'等待检测',error:null,checks:Object.entries(labels).map(([id,label])=>({id,label,status:'PENDING',detail:'尚未检测'}))};
   const progress = (id,status,detail) => {const row=state.checks.find(r=>r.id===id);if(row)Object.assign(row,{status,detail});};
   const check = async () => {state.checked=false;state.checks.forEach(r=>Object.assign(r,{status:'PENDING',detail:'尚未检测'}));const result=await checker(root,{onProgress:progress});const saved=await modeReader(root);state.mode=saved.mode||'local';if(saved.lan)state.lan={...state.lan,status:'CONFIGURED',mode:'lan',config:saved.lan};Object.assign(state,{source:result.source||null,checked:true,configured:result.configured,owned:result.owned,dataRoot:result.dataRoot,url:result.owned?(result.origin||`http://127.0.0.1:${result.ports[0]}/`):null,status:result.owned?'原实例已运行':result.configured?'可以启动':'检测通过，请配置数据目录与管理员'});return result;};
-  const job = task => {state.busy=true;state.error=null;Promise.resolve().then(task).catch(e=>{state.error=safeError(e);state.status='操作未完成';for(const row of state.checks)if(row.status==='RUNNING')row.status='FAIL';}).finally(()=>{state.busy=false;});};
+  const job = (task,clearError=true) => {state.busy=true;if(clearError)state.error=null;Promise.resolve().then(task).catch(e=>{state.error=safeError(e);state.status='操作未完成';for(const row of state.checks)if(row.status==='RUNNING')row.status='FAIL';}).finally(()=>{state.busy=false;});};
   const server=createServer(async(req,res)=>{
     const nonce=randomBytes(18).toString('base64');
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self'; style-src 'self' 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'`);
@@ -75,11 +75,14 @@ export async function startCenter(packageRoot,{checker=checkCompetitionEnvironme
       if(input.action==='exit') {json(200,{message:'仅退出启动中心，Hub 保持原状态。'});server.close();return;}
       const actions={
         check:check,
-        choose:async()=>{state.selection=await folderPicker();},
+        choose:async()=>{state.selection=path.join(await folderPicker(),'UED-Asset-Hub-Data');},
         initialize:async()=>{
           if(!state.checked || state.configured || input.confirmed!==true || input.password!==input.confirmPassword || typeof input.dataRoot!=='string' || !path.isAbsolute(input.dataRoot)) throw Error('请先通过检测，明确确认一个全新的外置数据目录，并两次输入一致的管理员密码。');
-          state.checked=false;state.status='正在准备全新外置数据及管理员；不安装依赖';
-          try{await initializer(root,{dataRoot:path.resolve(input.dataRoot),username:input.username,password:input.password});}finally{input.password='';input.confirmPassword='';}
+          try{
+            await validateNewAdministratorInput(root,input);
+            state.checked=false;state.status='正在准备全新外置数据及管理员；不安装依赖';
+            await initializer(root,{dataRoot:path.resolve(input.dataRoot),username:input.username,password:input.password});
+          }finally{input.password='';input.confirmPassword='';}
           await check();
         },
         attach:async()=>{if(!state.checked || state.configured || typeof input.dataRoot!=='string'||!path.isAbsolute(input.dataRoot))throw Error('请先检测并选择原安装数据根。');state.checked=false;await attacher(root,path.resolve(input.dataRoot));await check();},
@@ -89,7 +92,7 @@ export async function startCenter(packageRoot,{checker=checkCompetitionEnvironme
         stop:async()=>{if(!state.checked||!state.configured)throw Error('请先确认本安装配置。');state.status='正在鉴权并受控停止本安装';await runner('Stop',root,{open:false});state.owned=false;state.url=null;state.status='本安装已受控停止';}
       };
       if(!Object.hasOwn(actions,input.action)){json(400,{error:'不支持此操作，不提供任意命令执行。'});return;}
-      job(actions[input.action]);json(202,{accepted:true});
+      job(actions[input.action],input.action!=='choose');json(202,{accepted:true});
     }catch(e){json(400,{error:safeError(e)});}
   });
   let origin;
