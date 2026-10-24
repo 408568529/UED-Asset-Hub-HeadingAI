@@ -8,12 +8,12 @@ import { initializeLocalAdministrator } from './competition-launcher.mjs';
 const scope=await mkdtemp(path.join(os.tmpdir(),'ued-center-test-')),root=path.join(scope,'package');
 await mkdir(path.join(root,'tools'),{recursive:true});
 for(const name of ['competition-center-private.ps1','competition-choose-folder.ps1'])await cp(new URL(name,import.meta.url),path.join(root,'tools',name));
-let configured=false,starts=0,stops=0,initializations=0;const dataRoot=path.join(scope,'data'),parentRoot=path.join(scope,'chosen-parent');
+let configured=false,starts=0,stops=0,initializations=0,injectedUrl;const opened=[];const dataRoot=path.join(scope,'data'),parentRoot=path.join(scope,'chosen-parent');
 await mkdir(parentRoot);await writeFile(path.join(parentRoot,'existing'),'preserve-parent');
 await mkdir(path.join(root,'app/scripts'),{recursive:true});await mkdir(path.join(root,'app/agent-integration/scripts'),{recursive:true});
 for(const name of ['host-security-config.mjs','windows-security-foundation.mjs','local-distribution-config.mjs'])await cp(new URL(name,import.meta.url),path.join(root,'app/scripts',name));
 await cp(new URL('../agent-integration/scripts/genui-preview-grant.mjs',import.meta.url),path.join(root,'app/agent-integration/scripts/genui-preview-grant.mjs'));
-const center=await startCenter(root,{autoCheck:false,checker:async(_root,{onProgress})=>{for(const id of ['system','node','git','integrity','data','ports'])onProgress(id,'PASS','TEST FIXTURE');return {configured,owned:starts>stops,dataRoot:configured?dataRoot:null,ports:[3247]};},initializer:async(_root,input)=>{if(input.dataRoot===parentRoot)throw Error('该目录已存在。不会覆盖。');initializations++;configured=true;},folderPicker:async()=>parentRoot,lanInspector:async()=>({status:'NOT_CONFIGURED',addresses:['192.168.1.20'],message:'SYNTHETIC LAN CHECK'}),lanConfigurer:async(_root,input)=>({status:input.firewallConfirmed===true&&input.clientsTrustConfirmed===true?'CONFIGURED':'FIREWALL_REQUIRED',config:{origin:'https://192.168.1.20:4483'},message:'SYNTHETIC ONLY'}),runner:async(action,_root,options)=>{if(action==='Start'){starts++;return{url:options?.mode==='lan'?'https://192.168.1.20:4483/':'http://127.0.0.1:3247/',runtime:'ready'};}stops++;return{stopped:true};}});
+const center=await startCenter(root,{autoCheck:false,browserOpener:url=>opened.push(url),checker:async(_root,{onProgress})=>{for(const id of ['system','node','git','integrity','data','ports'])onProgress(id,'PASS','TEST FIXTURE');return {configured,owned:starts>stops,dataRoot:configured?dataRoot:null,ports:[3247]};},initializer:async(_root,input)=>{if(input.dataRoot===parentRoot)throw Error('该目录已存在。不会覆盖。');initializations++;configured=true;},folderPicker:async()=>parentRoot,lanInspector:async()=>({status:'NOT_CONFIGURED',addresses:['192.168.1.20'],message:'SYNTHETIC LAN CHECK'}),lanConfigurer:async(_root,input)=>({status:input.firewallConfirmed===true&&input.clientsTrustConfirmed===true?'CONFIGURED':'FIREWALL_REQUIRED',config:{origin:'https://192.168.1.20:4483'},message:'SYNTHETIC ONLY'}),runner:async(action,_root,options)=>{if(action==='Start'){starts++;return{url:injectedUrl||(options?.mode==='lan'?'https://192.168.1.20:4483/':'http://127.0.0.1:3247/'),runtime:'ready'};}stops++;return{stopped:true};}});
 const call=(action,extra={},headers={})=>fetch(center.origin+'/api/action',{method:'POST',headers:{Authorization:'Bearer '+center.token,Origin:center.origin,'Content-Type':'application/json',...headers},body:JSON.stringify({action,...extra})});
 const wait=async()=>{for(let n=0;n<100;n++){if(!center.state.busy)return;await new Promise(r=>setTimeout(r,20));}throw Error('test job timeout');};
 try{
@@ -34,6 +34,10 @@ try{
  await call('initialize',{dataRoot,username:'test-admin',password:'Synthetic-only-764!',confirmPassword:'Synthetic-only-764!',confirmed:true});await wait();assert.equal(initializations,1);
  await call('start',{mode:'lan'});await wait();assert.equal(starts,0);assert.match(center.state.error,/HTTPS/);
  await call('start',{mode:'local'});await wait();assert.equal(starts,1);assert(center.state.owned);
+ assert.deepEqual(opened,['http://127.0.0.1:3247/'],'Startup uses the native opener instead of a browser cross-port redirect');
+ await call('open',{url:'https://untrusted.test'});await wait();assert.equal(opened.at(-1),'http://127.0.0.1:3247/','Opening uses only owned state, never an arbitrary client URL');
+ const previousOpen=opened.length;assert.equal((await call('open',{}, {Origin:'https://untrusted.test'})).status,403);assert.equal(opened.length,previousOpen);
+
  assert.equal((await openCenter(root,{open:false})).reused,true);assert.equal(starts,1);
  await mkdir(dataRoot,{mode:0o700});await writeFile(path.join(dataRoot,'existing'),'preserve');
  await assert.rejects(initializeLocalAdministrator(root,{dataRoot,username:'test-admin',password:'Synthetic-only-764!'}),/已存在/);assert.equal(await readFile(path.join(dataRoot,'existing'),'utf8'),'preserve');
@@ -46,7 +50,9 @@ try{
  await call('start',{mode:'lan'});await wait();assert.equal(starts,2);assert.equal(center.state.url,'https://192.168.1.20:4483/');
  await call('configure-lan',{firewallConfirmed:true,clientsTrustConfirmed:true});await wait();assert.match(center.state.error,/停止/);
  await call('stop');await wait();assert.equal(stops,2);
+ const countAfterStop=opened.length;await call('open');await wait();assert.equal(opened.length,countAfterStop);assert.match(center.state.error,/运行/);
+ for(const url of ['https://untrusted.test/','javascript:alert(1)','http://u:p@127.0.0.1:3247/','https://192.168.1.21:4483/']){injectedUrl=url;const count=opened.length;await call('start',{mode:'local'});await wait();assert.equal(opened.length,count);assert.match(center.state.error,/访问地址/);await call('stop');await wait();}
  const before=stops;await call('exit');assert.equal(stops,before);
- console.log('PASS: standalone page, private capability, Host/Origin/CSRF, no shell endpoint, precheck gate, explicit confirmation, existing data preserved, no repeated initialization, LAN unconfigured denial, duplicate center reuse, controlled lifecycle adapter, page exit does not stop Hub.');
+ console.log('PASS: standalone page, private capability, Host/Origin/CSRF, no shell endpoint, precheck gate, explicit confirmation, existing data preserved, no repeated initialization, LAN unconfigured denial, duplicate center reuse, controlled lifecycle adapter, page exit does not stop Hub, native-opener handoff and untrusted URL denial.');
  console.log('Scope: protocol/unit fixture with injected lifecycle; not GUI or full package acceptance.');
 }finally{await new Promise(resolve=>center.server.close(resolve));await new Promise(r=>setTimeout(r,100));await rm(scope,{recursive:true,force:true});}

@@ -44,7 +44,7 @@ async function chooseFolder() {
     : await exec('/usr/bin/osascript',['-l','JavaScript','-e','const a=Application.currentApplication();a.includeStandardAdditions=true;a.chooseFolder({withPrompt:"选择外部数据目录或父目录"}).toString();'],{encoding:'utf8'});
   return result.stdout.trim().replace(/[\\/]$/,'');
 }
-export async function startCenter(packageRoot,{checker=checkCompetitionEnvironment,runner=runLocalDistribution,initializer=initializeLocalAdministrator,attacher=attachCompetitionInstallation,folderPicker=chooseFolder,lanInspector=inspectCompetitionLan,lanConfigurer=configureCompetitionLan,modeReader=readLaunchMode,lanSupported=true,autoCheck=true}={}) {
+export async function startCenter(packageRoot,{checker=checkCompetitionEnvironment,runner=runLocalDistribution,initializer=initializeLocalAdministrator,attacher=attachCompetitionInstallation,folderPicker=chooseFolder,lanInspector=inspectCompetitionLan,lanConfigurer=configureCompetitionLan,modeReader=readLaunchMode,browserOpener=openBrowser,lanSupported=true,autoCheck=true}={}) {
   const root = await realpath(packageRoot), recordFile = await privateControl(root);
   const token = randomBytes(32).toString('hex'), instance = randomBytes(24).toString('hex');
   const claim = await open(recordFile,'wx',0o600);
@@ -52,6 +52,12 @@ export async function startCenter(packageRoot,{checker=checkCompetitionEnvironme
   try{if(process.platform==='win32')execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(root,'tools/competition-center-private.ps1'),'-Path',path.dirname(recordFile),'-ProtectState'],{stdio:['ignore','pipe','pipe']});await claim.writeFile(JSON.stringify(record));}finally{await claim.close();}
   const labels = {integrity:'Hub / DSH / GenUI 完整性',system:'系统与 CPU 架构',node:'包内 Node',git:'便携 Git 与必要权限',data:'外置数据与访问权限',ports:'端口与已有实例'};
   const state = {mode:'local',lanSupported,source:null,lan:{status:'NOT_CONFIGURED',addresses:[],message:'选择局域网共享后检测地址、证书和防火墙。'},busy:false,checked:false,configured:false,owned:false,dataRoot:null,url:null,status:'等待检测',error:null,checks:Object.entries(labels).map(([id,label])=>({id,label,status:'PENDING',detail:'尚未检测'}))};
+  const openWorkspace = () => {
+    if(!state.checked || !state.configured || !state.owned || !state.url)throw Error('请先确认本安装已运行。');
+    const url=new URL(state.url);
+    if(url.username || url.password || !(state.mode==='local' && url.protocol==='http:' && url.hostname==='127.0.0.1' || state.mode==='lan' && url.protocol==='https:' && url.origin===state.lan.config?.origin))throw Error('启动返回的访问地址不符合当前运行模式。');
+    browserOpener(url.href);
+  };
   const progress = (id,status,detail) => {const row=state.checks.find(r=>r.id===id);if(row)Object.assign(row,{status,detail});};
   const check = async () => {state.checked=false;state.checks.forEach(r=>Object.assign(r,{status:'PENDING',detail:'尚未检测'}));const result=await checker(root,{onProgress:progress});const saved=await modeReader(root);state.mode=saved.mode||'local';if(saved.lan)state.lan={...state.lan,status:'CONFIGURED',mode:'lan',config:saved.lan};Object.assign(state,{source:result.source||null,checked:true,configured:result.configured,owned:result.owned,dataRoot:result.dataRoot,url:result.owned?(result.origin||`http://127.0.0.1:${result.ports[0]}/`):null,status:result.owned?'原实例已运行':result.configured?'可以启动':'检测通过，请配置数据目录与管理员'});return result;};
   const job = (task,clearError=true) => {state.busy=true;if(clearError)state.error=null;Promise.resolve().then(task).catch(e=>{state.error=safeError(e);state.status='操作未完成';for(const row of state.checks)if(row.status==='RUNNING')row.status='FAIL';}).finally(()=>{state.busy=false;});};
@@ -88,7 +94,8 @@ export async function startCenter(packageRoot,{checker=checkCompetitionEnvironme
         attach:async()=>{if(!state.checked || state.configured || typeof input.dataRoot!=='string'||!path.isAbsolute(input.dataRoot))throw Error('请先检测并选择原安装数据根。');state.checked=false;await attacher(root,path.resolve(input.dataRoot));await check();},
         'inspect-lan':async()=>{if(!lanSupported)throw Error('此 Mac 演示保留 3047 本机模式；局域网 HTTPS 配置用于 Windows 完整包。');if(!state.checked||!state.configured)throw Error('请先配置本安装数据目录。');state.lan=await lanInspector(root);},
         'configure-lan':async()=>{if(!lanSupported)throw Error('此 Mac 演示不修改 HTTPS、证书或防火墙配置。');if(!state.checked||!state.configured||state.owned)throw Error('请先配置数据目录，并受控停止本安装后再设置 HTTPS。');state.lan=await lanConfigurer(root,input);if(state.lan.status==='CONFIGURED')state.mode='lan';},
-        start:async()=>{if(input.mode==='lan'&&!lanSupported)throw Error('此 Mac 演示只允许原 3047 本机模式。');if(!['local','lan'].includes(input.mode))throw Error('请选择支持的运行模式。');if(input.mode==='lan'&&state.lan.status!=='CONFIGURED')throw Error('LAN 尚未配置并验证 HTTPS/证书/防火墙。');if(!state.checked || !state.configured)throw Error('请先完成预检与管理员/数据目录配置。');state.status='正在通过原 Supervisor 启动 Hub / DSH / Gateway / Proxy / GenUI';const result=await runner('Start',root,{open:false,mode:input.mode});state.url=result.url;state.mode=input.mode;state.owned=true;state.status=result.runtime==='configuration_required'?'服务已就绪，请在原 DSH 后台配置模型 Key':'服务已就绪';},
+        start:async()=>{if(input.mode==='lan'&&!lanSupported)throw Error('此 Mac 演示只允许原 3047 本机模式。');if(!['local','lan'].includes(input.mode))throw Error('请选择支持的运行模式。');if(input.mode==='lan'&&state.lan.status!=='CONFIGURED')throw Error('LAN 尚未配置并验证 HTTPS/证书/防火墙。');if(!state.checked || !state.configured)throw Error('请先完成预检与管理员/数据目录配置。');state.status='正在通过原 Supervisor 启动 Hub / DSH / Gateway / Proxy / GenUI';const result=await runner('Start',root,{open:false,mode:input.mode});state.url=result.url;state.mode=input.mode;state.owned=true;state.status=result.runtime==='configuration_required'?'服务已就绪，请在原 DSH 后台配置模型 Key':'服务已就绪';openWorkspace();},
+        open:async()=>{openWorkspace();},
         stop:async()=>{if(!state.checked||!state.configured)throw Error('请先确认本安装配置。');state.status='正在鉴权并受控停止本安装';await runner('Stop',root,{open:false});state.owned=false;state.url=null;state.status='本安装已受控停止';}
       };
       if(!Object.hasOwn(actions,input.action)){json(400,{error:'不支持此操作，不提供任意命令执行。'});return;}

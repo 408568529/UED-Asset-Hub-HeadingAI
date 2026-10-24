@@ -24,7 +24,7 @@ function harness({states=[],rejectAction=false,pendingAction=false,confirmed=fal
  function find(element,predicate){if(!element||typeof element!=='object')return; if(predicate(element))return element;for(const child of (element.children||[]).flat(Infinity)){const result=find(child,predicate);if(result)return result;}}
  const Center=find(root,element=>typeof element.type==='function'&&element.type.name==='Center').type;
  function render(){hook=0;ref=0;return Center();}
- const button=()=>find(render(),element=>element.type==='Button'&&element.children.some(x=>typeof x==='string'&&(x==='启动 UED Asset Hub'||x==='正在启动，成功后自动跳转')));
+ const button=()=>find(render(),element=>element.type==='Button'&&element.children.some(x=>typeof x==='string'&&(x==='启动 UED Asset Hub'||x==='正在启动，成功后打开浏览器')));
  return{values,redirects,timers,button,setupButton:()=>find(render(),element=>element.type==='Button'&&element.children.some(x=>x==='确认新建并设置管理员'||x==='正在初始化，请等待')),get actions(){return actions;},accept:()=>accept(),tick:()=>timers.shift()()};
 }
 const flush=async()=>{for(let n=0;n<20;n++)await Promise.resolve();};
@@ -33,7 +33,7 @@ const flush=async()=>{for(let n=0;n<20;n++)await Promise.resolve();};
  h.button().props.onClick();h.button().props.onClick();
  assert.equal(h.actions,1);assert.equal(h.button().props.loading,true);assert.equal(h.button().props.disabled,true);assert.deepEqual(h.redirects,[]);
  h.accept();await flush();assert.deepEqual(h.redirects,[],'Old URL must not redirect while startup is busy');
- h.tick();await flush();assert.deepEqual(h.redirects,[ready.url]);assert.equal(h.values[5],false);
+ h.tick();await flush();assert.deepEqual(h.redirects,[],'Ready startup must not navigate across ports in the renderer');assert.equal(h.values[5],false);
 }
 for(const state of [{...ready,error:'Synthetic startup failed'},{...ready,owned:false},{...ready,url:'https://untrusted.test/'}]){
  const h=harness({states:[state]});h.button().props.onClick();await flush();assert.deepEqual(h.redirects,[]);assert(h.values[1]);assert.equal(h.values[5],false);
@@ -42,9 +42,9 @@ for(const state of [{...ready,error:'Synthetic startup failed'},{...ready,owned:
  const h=harness({rejectAction:true});h.button().props.onClick();await flush();assert.deepEqual(h.redirects,[]);assert.equal(h.values[5],false);assert.match(h.values[1],/rejected/);
 }
 {
- const h=harness({states:[ready]});h.button().props.onClick();await flush();assert.deepEqual(h.redirects,[ready.url],'Fast successful startup also redirects');
+ const h=harness({states:[ready]});h.button().props.onClick();await flush();assert.deepEqual(h.redirects,[],'Native opener owns successful navigation, including fast startup');
 }
-console.log('PASS: immediate loading, duplicate-click guard, stale URL during delayed startup, failure stays in center, fast success, and redirect URL boundary. No services or business data used.');
+console.log('PASS: immediate loading, duplicate-click guard, stale URL during delayed startup, failure stays in center, fast success, native-opener handoff and URL boundary without renderer navigation. No services or business data used.');
 
 {
  const h=harness({confirmed:true});h.values[0]={...ready,configured:false,owned:false,checked:true,busy:false};h.values[3]=1;
