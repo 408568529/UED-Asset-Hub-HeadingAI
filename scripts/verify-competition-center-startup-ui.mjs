@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source=await readFile(new URL('./competition-center-ui.tsx',import.meta.url),'utf8');
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,esModuleInterop:true,target:ts.ScriptTarget.ES2020}}).outputText;
-const ready={mode:'local',lanSupported:false,busy:false,checked:true,configured:true,owned:true,url:'http://127.0.0.1:3047/',checks:[],lan:{status:'NOT_CONFIGURED',addresses:[],message:''}};
+const ready={source:{commit:'eac0a7b9d3fa8a7321a06711b1bbb3130b6506b3',tree:'04669c707f27e3dba5a2fcc9d2a20c5e61872872'},mode:'local',lanSupported:false,busy:false,checked:true,configured:true,owned:true,url:'http://127.0.0.1:3047/',checks:[],lan:{status:'NOT_CONFIGURED',addresses:[],message:''}};
 function harness({states=[],rejectAction=false,pendingAction=false}={}){
  const values=[{...ready},'','local',3,false,false],refs=[],timers=[],redirects=[];let hook=0,ref=0,root,actions=0,accept;
  const React={createElement:(type,props,...children)=>({type,props:props||{},children}),useState(initial){const i=hook++;if(!(i in values))values[i]=initial;return[values[i],value=>{values[i]=typeof value==='function'?value(values[i]):value;}];},useRef(initial){const i=ref++;return refs[i]||(refs[i]={current:initial});},useEffect(){}};

@@ -443,8 +443,8 @@
     },
     {
       "path": "delivery/competition/center/center.js",
-      "size": 1039023,
-      "sha256": "a2eb02f685395d82936661271b17f871df17f8080b32656b8f94e64abc4c5827",
+      "size": 1039030,
+      "sha256": "2b7439873e9e2fcd060866edd08aa695ed9d365938c992955d6c64ecc8bde068",
       "mode": "100644"
     },
     {
@@ -456,7 +456,7 @@
     {
       "path": "delivery/competition/center/manifest.json",
       "size": 1455,
-      "sha256": "f75a6263d4695abf57b27228be37e68e074acbf3f5e2bb1cd2e9a5542c819746",
+      "sha256": "4a937880adcc1a09ee4bb0efab3770dfbfcf116e519c0d809a5e2bce41dedf4b",
       "mode": "100644"
     },
     {
@@ -749,8 +749,8 @@
     },
     {
       "path": "scripts/competition-center-ui.tsx",
-      "size": 16878,
-      "sha256": "c705f85896a41428bbd7c67f55b4f18efe2b7c1ca68f815b381e693c88200220",
+      "size": 16906,
+      "sha256": "a3476bf5a4e6f2467846eadee6286b0eb87e036079954bf3692cb4f042cb6a6a",
       "mode": "100644"
     },
     {
@@ -1373,8 +1373,8 @@
     },
     {
       "path": "scripts/verify-competition-center-startup-ui.mjs",
-      "size": 4672,
-      "sha256": "cbda37deb3b8e2294632cab00fc128ce6eef37b22be7a9b4c83770874871a782",
+      "size": 4779,
+      "sha256": "9aa3574272d4e7fa5ca573cf7c93e2ff059acac51dcd3339188b9161e271eabd",
       "mode": "100644"
     },
     {
